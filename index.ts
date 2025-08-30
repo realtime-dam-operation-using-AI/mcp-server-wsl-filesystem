@@ -228,14 +228,21 @@ async function setupWslDistribution(): Promise<string> {
   return allowedDistro!;
 }
 
-// Initialiser la distribution WSL
-setupWslDistribution().catch(error => {
-  console.error("Erreur lors de l'initialisation de WSL:", error);
-  process.exit(1);
-});
+let allowedDirectories: string[] = [];
 
-// Store allowed directories in normalized form
-const allowedDirectories = pathArgs.map(dir => normalizePath(resolve(expandHome(dir))));
+// Initialiser la distribution WSL et attendre qu'elle soit configurée
+async function initializeWslAndDirectories(): Promise<void> {
+  try {
+    await setupWslDistribution();
+
+    allowedDirectories = pathArgs.map(dir => normalizePath(resolve(expandHome(dir))));
+
+    await validateDirectories();
+  } catch (error) {
+    console.error("Erreur lors de l'initialisation:", error);
+    process.exit(1);
+  }
+}
 
 /**
  * Exécute une commande unique dans WSL
@@ -437,11 +444,6 @@ async function validateDirectories(): Promise<void> {
   }
 }
 
-// Initialize validation
-validateDirectories().catch(error => {
-  console.error("Failed to validate directories:", error);
-  process.exit(1);
-});
 
 // Security utilities
 async function validatePath(requestedPath: string): Promise<string> {
@@ -562,7 +564,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.3.0",
+  version: "1.3.1",
 }, {
   capabilities: {
     tools: {},
@@ -1281,6 +1283,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start server
 async function runServer() {
+  await initializeWslAndDirectories();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Secure MCP WSL Filesystem Server running on stdio");
